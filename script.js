@@ -19,7 +19,9 @@ var imgs = {
     downBird1: new Image(),       // 下飞小鸟1
     startBtn: new Image(),        // 开始按钮
     upPipe: new Image(),          // 上方水管
+    upMod: new Image(),           // 上方管体
     downPipe: new Image(),        // 下方水管
+    downMod: new Image(),         // 下方管体
     score0: new Image(),          // 分数0
     score1: new Image(),          // 分数1
     score2: new Image(),          // 分数2
@@ -47,7 +49,9 @@ var imgs = {
         this.downBird1.src = './imgs/down_bird1.png';
         this.startBtn.src = './imgs/start.jpg';
         this.upPipe.src = './imgs/up_pipe.png';
+        this.upMod.src = './imgs/up_mod.png';
         this.downPipe.src = './imgs/down_pipe.png';
+        this.downMod.src = './imgs/down_mod.png';
         this.score0.src = './imgs/0.jpg';
         this.score1.src = './imgs/1.jpg';
         this.score2.src = './imgs/2.jpg';
@@ -139,9 +143,10 @@ var bird = {
         if (this.posY >= 395) {
             this.speed = 0;
             this.draw(this.bird[this.index]);
+            this.die();
         }
 
-        // todo 如果撞顶，弹回来
+        // 如果撞顶，弹回来
         if (this.posY <= 0) {
             this.speed = 6;
         }
@@ -167,7 +172,10 @@ var bird = {
      * 挥动翅膀
      */
     waveWings: function () {
-
+        this.index++;
+        if (this.index > 1) {
+            this.index = 0;
+        }
     },
 
     /**
@@ -191,10 +199,10 @@ function Pipe(upPipe, upMod, downPipe, downMod) {
     this.upMod = upMod;           // 上方管体
     this.downPipe = downPipe;     // 下方水管
     this.downMod = downMod;       // 下方管体
-    this.upHeight = Math.floor(Math.random() * 60);         // todo 随机生成上方水管高度
-    this.downHeight = Math.floor(60 - this.upHeight) * 3;   // todo 保证所有上下水管距离相同
+    this.upHeight = Math.floor(Math.random() * 60);         // 随机生成上方水管高度
+    this.downHeight = (60 - this.upHeight) * 3;             // 保证所有上下水管距离相同
     this.posX = 300;              // 横坐标
-    this.upPosY = this.upHeight + 3 * this.upPipe.height;   // 上水管纵坐标
+    this.upPosY = this.upHeight * 3 + this.upPipe.height;   // 上水管纵坐标
     this.downPosY = 362 - this.downHeight;                  // 下水管纵坐标
     this.hadSkipped = false;           // 是否被越过
     this.hadSkippedChange = false;     // 去重
@@ -242,7 +250,11 @@ var canvasWidth = canvas.width,
 var v = 0;                // 草坪滚动的增量
 var shake = true;         // 标题抖动的状态
 var startTimer = null;    // 开始界面的计时器
-var startTime = 0;        // 定时器运行的次数
+var startTime = 0;        // 开始界面定时器运行的次数
+var gameTimer = null;     // 游戏界面的计时器
+var gameTime = 0;         // 游戏界面定时器运行的次数
+var pipes = [];           // 存放水管
+var index = 0;            // pipes的下标
 
 var score = 0;            // 当前得分
 var scoreImgs = [         // 分数图片
@@ -258,6 +270,8 @@ var scoreImgs = [         // 分数图片
     imgs.score9
 ];
 
+// 绑定点击开始按钮事件
+canvas.addEventListener('click', startBtnClick, false);
 
 init();
 
@@ -357,13 +371,66 @@ function startLayer() {
 
 
 /**
+ * 游戏界面
+ */
+function gameLayer() {
+    gameTimer = setInterval(function () {
+        clean();
+        drawBg();
+        drawGrass();
+        if (gameTime % 5 === 0) {
+            if (gameTime === 50) {
+                createPipes();
+                gameTime = 0;
+            }
+            bird.waveWings();
+        }
+        gameTime++;
+
+        for (var i = 0, len = pipes.length; i < len; i++) {
+            pipes[i].move();
+            isHit(pipes[i]);
+            isSkipped(pipes[i]);
+        }
+        drawScore();
+        bird.fly();
+        // 如果小鸟死了
+        if (!bird.alive) {
+            // 游戏结束
+            gameOver();
+            // 重置数据
+            reset();
+        }
+    }, 24);
+}
+
+
+/**
+ * 创建水管
+ */
+function createPipes() {
+    var pipe = new Pipe(imgs.upPipe, imgs.upMod, imgs.downPipe, imgs.downMod);
+    // 添加进pipes中，如果已经有三个水管，则依次替换
+    if (pipes.length < 3) {
+        pipes.push(pipe);
+    } else {
+        pipes[index] = pipe;
+        index++;
+        if (index >= 3) {
+            index = 0;
+        }
+    }
+}
+
+
+/**
  * 判断是否碰撞
  * @param oPipe
  */
 function isHit(oPipe) {
     if (bird.posX + bird.bird[0].width > oPipe.posX
         && bird.posX < oPipe.posX + oPipe.downPipe.width) {
-        if (bird.posY < oPipe.upPosY || oPipe.downPosY) {
+        if (bird.posY < oPipe.upPosY || bird.posY + 30 > oPipe.downPosY) {
             bird.die();
         }
     }
@@ -377,7 +444,7 @@ function isHit(oPipe) {
 function isSkipped(oPipe) {
     if (bird.posX > oPipe.posX + oPipe.downPipe.width) {
         // 水管以被超过
-        oPipe.hasSkipped = true;
+        oPipe.hadSkipped = true;
         // 确保水管只被越过一次
         if (!oPipe.hadSkippedChange && oPipe.hadSkipped) {
             // 分数加一
@@ -387,3 +454,75 @@ function isSkipped(oPipe) {
     }
 }
 
+
+/**
+ * 键盘点击事件
+ * @param e
+ */
+function kd(e) {
+    if (e.keyCode === 32) {
+        bird.speed = -10;
+    }
+}
+
+
+/**
+ * 触屏事件
+ */
+function ts() {
+    bird.speed = -10;
+}
+
+
+/**
+ * start按钮点击事件
+ * @param e
+ */
+function startBtnClick(e) {
+    // 判断点击位置
+    if (e.clientX > canvas.offsetLeft + canvas.width / 2 - imgs.startBtn.width / 2
+        && e.clientX < canvas.offsetLeft + canvas.width / 2 + imgs.startBtn.width / 2
+        && e.clientY < canvas.offsetTop + 300 + imgs.startBtn.height
+        && e.clientY > canvas.offsetTop + 300) {
+        clean();
+        // 清除开始界面定时器
+        clearInterval(startTimer);
+        gameLayer();
+        // 添加响应事件
+        window.addEventListener('keydown', kd, false);
+        window.addEventListener('touchstart', ts, false);
+        // 删除start按钮响应事件
+        canvas.removeEventListener('click', startBtnClick, false);
+    }
+}
+
+
+/**
+ * 游戏结束
+ */
+function gameOver() {
+    // 清除定时器
+    clearInterval(gameTimer);
+    // 清除窗口响应事件
+    window.removeEventListener('keydown', kd, false);
+    window.removeEventListener('touchstart', ts, false);
+    // 绘制GAME OVER
+    ctx.font = "50px blod";
+    ctx.fontWeight = '1000';
+    ctx.fillStyle = 'white';
+    ctx.fillText('GAME OVER', 20, 200);
+    drawSTartBtn();
+}
+
+
+/**
+ * 重置数据
+ */
+function reset() {
+    bird.posY = 200;
+    bird.speed = 0;
+    bird.alive = true;
+    pipes = [];
+    score = 0;
+    canvas.addEventListener('click', startBtnClick, false);
+}
